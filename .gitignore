@@ -1,0 +1,7 @@
+*.img
+*.qcow2
+*.img
+*.xml
+seed-*
+node-*
+

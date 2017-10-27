@@ -1,0 +1,32 @@
+--- openstack_user_config.yml.test.example	2017-11-10 06:36:52.032000000 +0000
++++ openstack_user_config.yml	2017-11-10 07:17:56.572000000 +0000
+@@ -131,6 +131,8 @@
+ compute_hosts:
+   compute1:
+     ip: 172.29.236.12
++  compute2:
++    ip: 172.19.236.14
+ 
+ # cinder storage host (LVM-backed)
+ storage_hosts:
+@@ -144,3 +146,19 @@
+           volume_driver: cinder.volume.drivers.lvm.LVMVolumeDriver
+           volume_backend_name: LVM_iSCSI
+           iscsi_ip_address: "172.29.244.13"
++
++#          
++# Level: log_hosts (required)
++# List of target hosts on which to deploy logging services. Recommend
++# one minimum target host for this service.
++#
++#   Level: <value> (required, string)
++#   Hostname of a target host.
++#
++#     Option: ip (required, string)
++#     IP address of this target host, typically the IP address assigned to
++#     the management bridge.
++log_hosts:
++  log1:
++    ip: 172.29.236.171
++
+

@@ -1,0 +1,18 @@
+# This is a single-NIC configuration to implement the required bridges
+# for OpenStack-Ansible.
+# After implementing this configuration, the host will need to be
+# rebooted.
+# Let jumpstart reach management interfaces
+
+# Physical interface
+auto ens4
+iface ens4 inet manual
+
+
+auto ens4.10
+iface ens4.10 inet static
+    address 172.29.236.1
+    netmask 255.255.252.0
+    vlan-raw-device ens4
+
+
