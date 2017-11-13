@@ -5,7 +5,7 @@
    compute1:
      ip: 172.29.236.12
 +  compute2:
-+    ip: 172.19.236.14
++    ip: 172.29.236.14
  
  # cinder storage host (LVM-backed)
  storage_hosts:

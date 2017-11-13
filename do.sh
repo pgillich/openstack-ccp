@@ -6,13 +6,16 @@ SSH_OPTIONS=(-o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o Us
 PUBKEY=$(<${HOME}/.ssh/id_rsa.pub)
 MYDIR=$(dirname $(readlink -f "$0"))
 DOMAINS=('infra1' 'storage1' 'log1' 'compute1' 'compute2' 'jumpstart')
-declare -A IMGSIZ=( ['jumpstart']='4G' ['infra1']='4G' ['storage1']='4G' ['log1']='4G' ['compute1']='4G' ['compute2']='4G' )
+declare -A IMGSIZ=( ['jumpstart']='4G' ['infra1']='24G' ['storage1']='8G' ['log1']='8G' ['compute1']='16G' ['compute2']='16G' )
+declare -A MEMSIZ=( ['jumpstart']='2097152' ['infra1']='16777216' ['storage1']='4194304' ['log1']='4194304' ['compute1']='8388608' ['compute2']='8388608' )
 DELAY=10
 OUCPATCH="openstack_user_config.yaml.diff"
+OUD="oslo.utils.diff"
+RIG="/media/ethfci/e4dbcbb8-5428-497e-ae2d-f184b8d00f01/tmp/rig"
 
 function mkseed () {
-	local seed="seed-${1}"
-    cat <<- EOF > $seed
+    local seed="seed-${1}"
+    cat <<- EOF > ${seed}
 	#cloud-config
 	hostname: $1
 	password: ubuntu
@@ -21,13 +24,13 @@ function mkseed () {
 	ssh_authorized_keys:
 	    - ${PUBKEY}
 	EOF
-    cloud-localds "${seed}.img" $seed
-    echo -e "\n### $1: cloudinit: ${seed}.img\n"
+    cloud-localds "${seed}.iso" ${seed}
+    echo -e "\n### $1: cloudinit: ${seed}.iso\n"
 }
 
 function mkimage () {
-    wget -nc -q -O $IMAGE "${ARCHURI}/${ARCHIMAGE}"
-    qemu-img convert -O qcow2 $IMAGE  "${1}.qcow2"
+    wget -nc -q -O ${IMAGE} "${ARCHURI}/${ARCHIMAGE}"
+    qemu-img convert -O qcow2 ${IMAGE}  "${1}.qcow2"
     qemu-img resize "${1}.qcow2" ${IMGSIZ[${1}]}
     qemu-img info "${1}.qcow2"
 }
@@ -84,7 +87,7 @@ function mkdomain () {
     cat <<- EOF > "${1}.xml"
 	<domain type="kvm">
 	    <name>$1</name>
-	    <memory>1048576</memory>
+	    <memory>${MEMSIZ[${1}]}</memory>
 	    <os>
 	        <type>hvm</type>
 	        <boot dev="hd" />
@@ -100,7 +103,7 @@ function mkdomain () {
 	            <target dev="vda" bus="virtio" />
 	        </disk>
 	        <disk type="file" device="cdrom">
-	            <source file="${MYDIR}/seed-${1}.img" />
+	            <source file="${MYDIR}/seed-${1}.iso" />
 	            <target dev="vdb" bus="virtio" />
 	            <readonly/>
 	        </disk>
@@ -165,6 +168,7 @@ function provision () {
     local jumposa="/opt/openstack-ansible"
     local jumpdepcfg="/etc/openstack_deploy"
     local osauc="${jumpdepcfg}/openstack_user_config.yml"
+    local osauv="${jumpdepcfg}/user_variables.yml"
     local -a PROVISION_STEPS
     local -a UPGRADE_STEPS=("sudo apt-get update 2>&1 >> apt.log"
                             "sudo apt-get -y dist-upgrade 2>&1 >> apt.log")
@@ -175,6 +179,10 @@ function provision () {
                                 `" ntp"`
                                 `" ntpdate"`
                                 `" python-dev"`
+                                `" python-crypto"`
+                                `" python-yaml"`
+                                `" vlan"`
+                                `" sshpass"`
                                 `" 2>&1 >> apt.log")
             ;;
          *)
@@ -198,6 +206,12 @@ function provision () {
     for step in "${PROVISION_STEPS[@]}" ; do remote $domain "$step" ; done
     case $domain in
         jumpstart)
+	    scp ${SSH_OPTIONS[@]} "interfaces.${domain}" "ubuntu@${addr}:interfaces.${domain}"
+	    ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
+		sudo su -
+		echo '8021q' >> /etc/modules
+		cat "/home/ubuntu/interfaces.${domain}" >/etc/network/interfaces.d/60-osa-interfaces.cfg
+		EOC
             do_reboot $domain
             scp ${SSH_OPTIONS[@]} "$OUCPATCH" "ubuntu@${addr}:${OUCPATCH}"
             ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
@@ -208,6 +222,14 @@ function provision () {
 		- name: os_monasca
 		  scm: git
 		  src: https://git.openstack.org/openstack/openstack-ansible-os_monasca
+		  version: master
+		- name: os_monasca-agent
+		  scm: git
+		  src: https://git.openstack.org/openstack/openstack-ansible-os_monasca-agent
+		  version: master
+		- name: os_monasca-ui
+		  scm: git
+		  src: https://git.openstack.org/openstack/openstack-ansible-os_monasca-ui
 		  version: master
 		EOF
 		cp -r "${jumposa}/etc/openstack_deploy/." "${jumpdepcfg}/"
@@ -261,16 +283,96 @@ function add_to_ssh_config() {
     fi
 }
 
-mknet
-mkstorage
-for domain in ${DOMAINS[@]} ; do
-    mkseed $domain
-    mkimage $domain
-    mkdomain $domain
-    provision $domain
-    add_to_ssh_config $domain
-done
+function populate_ssh() {
+    local addr=$(ip4domain 'jumpstart')
+    local kfiles=('id_rsa' 'id_rsa.pub')
+    local targetaddr
+
+    for kfile in ${kfiles[@]} ; do
+        ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
+	sudo su -
+	cp "/root/.ssh/${kfile}" "/home/ubuntu/.ssh/${kfile}"
+	chown ubuntu.ubuntu "/home/ubuntu/.ssh/${kfile}"
+	EOC
+    done
+    for target in ${DOMAINS[@]} ; do
+        if [[ "$target" != "jumpstart" ]]; then
+            ssh ${SSH_OPTIONS[@]} ubuntu@${addr} sshpass -p 'ubuntu' ssh-copy-id ${SSH_OPTIONS[@]} "ubuntu@${target}"
+            ssh ${SSH_OPTIONS[@]} ubuntu@${addr} scp ${SSH_OPTIONS[@]} .ssh/id_rsa.pub "ubuntu@${target}:id_rsa.pub"
+            targetaddr=$(ip4domain $target)
+            echo "### Setting up ansible key on ${target} ($targetaddr)"
+            ssh ${SSH_OPTIONS[@]} ubuntu@${targetaddr} <<- EOC
+		sudo su -
+		cat /home/ubuntu/id_rsa.pub >> /root/.ssh/authorized_keys
+		chmod 600 /root/.ssh/authorized_keys
+		rm -f /home/ubuntu/id_rsa.pub
+		EOC
+        fi
+    done
+}
+
+function configure_creds() {
+    local addr=$(ip4domain 'jumpstart')
+    local secretsfile="/etc/openstack_deploy/user_secrets.yml"
+
+    ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
+	sudo su -
+	cat >> ${secretsfile}   << EOF
+	
+	## Monasca options
+	grafana_admin_password:
+	grafana_galera_password:
+	monasca_container_mysql_password:
+	monasca_influxdb_admin_password:
+	monasca_api_influxdb_password:
+	monasca_persister_influxdb_password:
+	monasca_service_password:
+	monasca_agent_password:
+	
+	## Monasca-agent options
+	monasca_agent_password:
+	EOF
+	python /opt/openstack-ansible/scripts/pw-token-gen.py --file ${secretsfile}
+	EOC
+}
+
+function run_playbooks() {
+    local oma="/etc/ansible/roles/os_monasca-agent/defaults/main.yml"
+    local addr=$(ip4domain 'jumpstart')
+
+    scp ${SSH_OPTIONS[@]} ${OUD} ubuntu@${addr}:${OUD}
+    ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
+	sudo patch "${oma}" "/home/ubuntu/${OUD}"  &&\
+	cd /opt/openstack-ansible/playbooks &&\
+	sudo openstack-ansible setup-infrastructure.yml --syntax-check &&\
+	sudo openstack-ansible setup-hosts.yml &&\
+	sudo openstack-ansible setup-infrastructure.yml &&\
+	sudo ansible galera_container -m shell -a "mysql -h localhost -e 'show status like \"%wsrep_cluster_%\";'" &&\
+	sudo openstack-ansible setup-openstack.yml
+	EOC
+}
+
+function verify() {
+    local cid=$(lxc-ls | grep utility)
+}
+
+function main() {
+#    rm -rf $RIG
+#    mkdir -p $RIG
+    mknet
+    mkstorage '24G'
+    for domain in ${DOMAINS[@]} ; do
+        mkseed $domain
+        mkimage $domain
+        mkdomain $domain
+        provision $domain
+        add_to_ssh_config $domain
+    done
+    populate_ssh
+    configure_creds
+    run_playbooks
+}
+
+main "$@"
 
 #virsh shutdown guest1 --mode acpi
-
-
