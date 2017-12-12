@@ -1,0 +1,56 @@
+diff -ruN a/ansible-influxdb/meta/main.yml b/ansible-influxdb/meta/main.yml
+--- a/ansible-influxdb/meta/main.yml	2017-12-15 09:45:57.000000000 +0100
++++ b/ansible-influxdb/meta/main.yml	2018-01-16 16:17:53.467854094 +0100
+@@ -14,4 +14,8 @@
+   categories:
+   - database
+   - database:nosql
+-dependencies: []
++dependencies:
++  - { role: pip_install, pip_lock_to_internal_repo: True }
++  - role: apt_package_pinning
++    when:
++      - ansible_pkg_mgr == 'apt'
+diff -ruN a/ansible-kafka/meta/main.yml b/ansible-kafka/meta/main.yml
+--- a/ansible-kafka/meta/main.yml	2017-12-15 09:45:54.000000000 +0100
++++ b/ansible-kafka/meta/main.yml	2018-01-16 16:18:55.060529011 +0100
+@@ -15,4 +15,8 @@
+   categories:
+   - clustering
+   - system
+-dependencies: []
++dependencies:
++  - { role: pip_install, pip_lock_to_internal_repo: True }
++  - role: apt_package_pinning
++    when:
++      - ansible_pkg_mgr == 'apt'
+diff -ruN a/ansible-storm/meta/main.yml b/ansible-storm/meta/main.yml
+--- a/ansible-storm/meta/main.yml	2017-12-15 09:45:55.000000000 +0100
++++ b/ansible-storm/meta/main.yml	2018-01-16 16:19:27.660886217 +0100
+@@ -18,4 +18,8 @@
+   categories:
+   - clustering
+   - system
+-dependencies: []
++dependencies:
++  - { role: pip_install, pip_lock_to_internal_repo: True }
++  - role: apt_package_pinning
++    when:
++      - ansible_pkg_mgr == 'apt'
+diff -ruN a/ansible-zookeeper/meta/main.yml b/ansible-zookeeper/meta/main.yml
+--- a/ansible-zookeeper/meta/main.yml	2017-12-15 09:45:53.000000000 +0100
++++ b/ansible-zookeeper/meta/main.yml	2018-01-16 16:20:38.685664393 +0100
+@@ -17,8 +17,8 @@
+     - all
+   categories:
+   - clustering
+-dependencies: []
+-  # List your role dependencies here, one per line. Only
+-  # dependencies available via galaxy should be listed here.
+-  # Be sure to remove the '[]' above if you add dependencies
+-  # to this list.
++dependencies:
++  - { role: pip_install, pip_lock_to_internal_repo: True }
++  - role: apt_package_pinning
++    when:
++      - ansible_pkg_mgr == 'apt'

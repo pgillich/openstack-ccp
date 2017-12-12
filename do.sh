@@ -6,7 +6,7 @@ SSH_OPTIONS=(-o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o Us
 PUBKEY=$(<${HOME}/.ssh/id_rsa.pub)
 MYDIR=$(dirname $(readlink -f "$0"))
 DOMAINS=('infra1' 'storage1' 'log1' 'compute1' 'compute2' 'jumpstart')
-declare -A IMGSIZ=( ['jumpstart']='4G' ['infra1']='24G' ['storage1']='8G' ['log1']='8G' ['compute1']='16G' ['compute2']='16G' )
+declare -A IMGSIZ=( ['jumpstart']='4G' ['infra1']='28G' ['storage1']='8G' ['log1']='8G' ['compute1']='16G' ['compute2']='16G' )
 declare -A MEMSIZ=( ['jumpstart']='2097152' ['infra1']='16777216' ['storage1']='4194304' ['log1']='4194304' ['compute1']='8388608' ['compute2']='8388608' )
 DELAY=10
 OUCPATCH="openstack_user_config.yaml.diff"
@@ -231,6 +231,21 @@ function provision () {
 		  scm: git
 		  src: https://git.openstack.org/openstack/openstack-ansible-os_monasca-ui
 		  version: master
+		- name: ansible-zookeeper
+		  scm: git
+		  src: https://github.com/Chillisystems/ansible-zookeeper
+		- name: ansible-kafka
+		  scm: git
+		  src: https://github.com/flaviodsr/ansible-kafka
+		- name: ansible-storm
+		  scm: git
+		  src: https://github.com/flaviodsr/ansible-storm
+		- name: ansible-influxdb
+		  scm: git
+		  src: https://github.com/flaviodsr/ansible-influxdb
+		- name: grafana-ansible
+		  scm: git
+		  src: https://github.com/flaviodsr/grafana-ansible
 		EOF
 		cp -r "${jumposa}/etc/openstack_deploy/." "${jumpdepcfg}/"
 		cp "${jumpdepcfg}/openstack_user_config.yml.test.example" $osauc
@@ -336,11 +351,58 @@ function configure_creds() {
 	EOC
 }
 
+function copytojump() {
+    local addr=$(ip4domain 'jumpstart')
+
+    scp ${SSH_OPTIONS[@]} ${1} ubuntu@${addr}:${1}
+}
+
+function add_monasca() {
+    local addr=$(ip4domain 'jumpstart')
+    local jumposa="/opt/openstack-ansible"
+    local jumpdepcfg="/etc/openstack_deploy"
+    local rppath="${jumposa}/playbooks/defaults/repo_packages"
+    local gvpath="${jumposa}/inventory/group_vars"
+    local rpom="openstack_monasca.yml"
+    local gvom="monasca_all.yml"
+    local edm="monasca.yml"
+    local cdm="cd_monasca.yml"
+    local omi="os-monasca-install.yml"
+    local uhe="user_haproxy_extras.yml"
+    local hop="horizon.patch"
+    local app="add_pip.patch"
+    local jroles="/etc/ansible/roles"
+    local -A transfer=( ['rpom']=$rpom
+			['gvom']=$gvom
+			['edm']=$edm
+			['cdm']=$cdm
+			['omi']=$omi
+			['uhe']=$uhe
+			['hop']=$hop
+			['app']=$app)
+    for cfile in "${!transfer[@]}" ; do
+	copytojump ${transfer[${cfile}]}
+    done
+
+#sudo cp "${uhe}" "${jumpdefcfg}/${uhe}" &&\
+    ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
+	sudo cp "${rpom}" "${rppath}/${rpom}" &&\
+	sudo cp "${gvom}" "${gvpath}/${gvom}" &&\
+	sudo cp "${edm}" "${jumpdepcfg}/env.d/${edm}" &&\
+	sudo cp "${cdm}" "${jumpdepcfg}/conf.d/monasca.yml" &&\
+	sudo cp "${omi}" "${jumposa}/playbooks/${omi}" &&\
+	cd "${jroles}/os_horizon" &&\
+	sudo patch -p1 <"/home/ubuntu/${hop}" || echo "*** horizon patch failed"
+	EOC
+#	cd "${jroles}" &&\
+#	sudo patch -p1 <"/home/ubuntu/${app}" || echo "*** add pip patch failed"
+}
+
 function run_playbooks() {
     local oma="/etc/ansible/roles/os_monasca-agent/defaults/main.yml"
     local addr=$(ip4domain 'jumpstart')
 
-    scp ${SSH_OPTIONS[@]} ${OUD} ubuntu@${addr}:${OUD}
+    copytojump ${OUD}
     ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
 	sudo patch "${oma}" "/home/ubuntu/${OUD}"  &&\
 	cd /opt/openstack-ansible/playbooks &&\
@@ -360,7 +422,7 @@ function main() {
 #    rm -rf $RIG
 #    mkdir -p $RIG
     mknet
-    mkstorage '24G'
+    mkstorage '28G'
     for domain in ${DOMAINS[@]} ; do
         mkseed $domain
         mkimage $domain
@@ -370,9 +432,11 @@ function main() {
     done
     populate_ssh
     configure_creds
+    add_monasca
     run_playbooks
 }
 
+#sudo sysctl -p
 main "$@"
 
 #virsh shutdown guest1 --mode acpi
