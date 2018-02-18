@@ -1,17 +1,24 @@
 #!/bin/bash
+if [[ "$1" = "debug" ]]; then
+    set -x
+fi
+
+OSAREPO="https://git.openstack.org/openstack/openstack-ansible"
+OSABRANCH="stable/queens"
 ARCHURI="https://cloud-images.ubuntu.com/xenial/current"
 ARCHIMAGE="xenial-server-cloudimg-amd64-disk1.img"
 IMAGE="xenserv.img"
 SSH_OPTIONS=(-o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null -o LogLevel=error)
 PUBKEY=$(<${HOME}/.ssh/id_rsa.pub)
 MYDIR=$(dirname $(readlink -f "$0"))
-DOMAINS=('infra1' 'storage1' 'log1' 'compute1' 'compute2' 'jumpstart')
+DOMAINS=('jumpstart' 'infra1' 'storage1' 'log1' 'compute1' 'compute2')
 declare -A IMGSIZ=( ['jumpstart']='4G' ['infra1']='28G' ['storage1']='8G' ['log1']='8G' ['compute1']='16G' ['compute2']='16G' )
-declare -A MEMSIZ=( ['jumpstart']='2097152' ['infra1']='16777216' ['storage1']='4194304' ['log1']='4194304' ['compute1']='8388608' ['compute2']='8388608' )
+declare -A MEMSIZ=( ['jumpstart']='4194304' ['infra1']='8388608' ['storage1']='8388608' ['log1']='8388608' ['compute1']='8388608' ['compute2']='8388608' )
+ULIMIT=4096 # 4096 should be ok...
 DELAY=10
 OUCPATCH="openstack_user_config.yaml.diff"
-OUD="oslo.utils.diff"
-RIG="/media/ethfci/e4dbcbb8-5428-497e-ae2d-f184b8d00f01/tmp/rig"
+MAOH="maoh.patch"
+CLUSTER_GATEWAY="172.29.236.1/22"
 
 function mkseed () {
     local seed="seed-${1}"
@@ -44,10 +51,10 @@ function mkstorage () {
 function ip4domain () {
     local ETHERP="([0-9a-f]{2}:){5}([0-9a-f]{2})"
     local IPP="^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"
-    local MACS=$(virsh domiflist $1 |grep -o -E $ETHERP)
-    for mac in $MACS ; do
-        arp -e |grep $mac |grep -o -P $IPP
-    done
+    local net=${2:-'default'}
+    local mac=$(virsh domiflist $1 | grep $net | grep -o -E $ETHERP)
+
+    arp -e | grep $mac | grep -o -P $IPP
 }
 
 function pingssh () {
@@ -63,7 +70,8 @@ function wait4ssh () {
 }
 
 function do_reboot () {
-    virsh reboot $1
+    sleep $DELAY
+    virsh reboot $1 --mode=agent
     sleep $DELAY
     wait4ssh $1
 }
@@ -75,12 +83,11 @@ function mknet () {
 	  <bridge name='bus' stp='on' delay='0'/>
 	</network>
 	EOF
-    if virsh net-list --all|cut -d ' ' -f 2|egrep -q -wo 'bus'; then
-        virsh net-destroy bus
-        virsh net-undefine bus
-    fi
     virsh net-define bus.xml
     virsh net-start bus
+    sudo modprobe 8021q
+    sudo vconfig add bus 10
+    sudo ifconfig bus.10 ${CLUSTER_GATEWAY}
 }
 
 function mkdomain () {
@@ -90,43 +97,43 @@ function mkdomain () {
 	    <memory>${MEMSIZ[${1}]}</memory>
 	    <os>
 	        <type>hvm</type>
-	        <boot dev="hd" />
+	        <boot dev="hd"/>
 	    </os>
 	    <features>
-	        <acpi />
+	        <acpi/>
 	    </features>
-	    <vcpu>1</vcpu>
+	    <vcpu>2</vcpu>
 	    <devices>
 	        <disk type="file" device="disk">
-	            <driver type="qcow2" cache="none" />
-	            <source file="${MYDIR}/${1}.qcow2" />
-	            <target dev="vda" bus="virtio" />
+	            <driver type="qcow2" cache="none"/>
+	            <source file="${MYDIR}/${1}.qcow2"/>
+	            <target dev="vda" bus="virtio"/>
 	        </disk>
 	        <disk type="file" device="cdrom">
-	            <source file="${MYDIR}/seed-${1}.iso" />
-	            <target dev="vdb" bus="virtio" />
+	            <source file="${MYDIR}/seed-${1}.iso"/>
+	            <target dev="vdb" bus="virtio"/>
 	            <readonly/>
 	        </disk>
 	EOF
     if [[ "$1" = "storage1" ]]; then
         cat <<- EOF >> "${1}.xml"
 	        <disk type="file" device="disk">
-	            <driver type="qcow2" cache="none" />
-	            <source file="${MYDIR}/storage.qcow2" />
-	            <target dev="vdc" bus="virtio" />
+	            <driver type="qcow2" cache="none"/>
+	            <source file="${MYDIR}/storage.qcow2"/>
+	            <target dev="vdc" bus="virtio"/>
 	        </disk>
 	EOF
     fi
     cat <<- EOF >> "${1}.xml"
 	        <interface type="network">
-	            <source network="default" />
-	            <model type="virtio" />
-	       </interface>
+	            <source network="default"/>
+	            <model type="virtio"/>
+	        </interface>
 	        <interface type="network">
-	            <source network="bus" />
-	            <model type="e1000" />
+	            <source network="bus"/>
+	            <model type="e1000"/>
 	            <address type='pci' domain='0x0000' bus='0x00' slot='0x04' function='0x0'/>
-	       </interface>
+	        </interface>
 	        <console type='pty'>
 	            <target type='serial' port='0'/>
 	        </console>
@@ -142,6 +149,12 @@ function mkdomain () {
 	        <memballoon model='virtio'>
 	            <address type='pci' domain='0x0000' bus='0x00' slot='0x0a' function='0x0'/>
 	        </memballoon>
+	        <channel type='unix'>
+	            <source mode='bind' path="/var/lib/libvirt/qemu/channel/target/${1}.org.qemu.guest_agent.0"/>
+	            <target type='virtio' name='org.qemu.guest_agent.0' state='connected'/>
+	            <alias name='channel0'/>
+	            <address type='virtio-serial' controller='0' bus='0' port='1'/>
+	        </channel>
 	    </devices>
 	</domain>
 	EOF
@@ -162,6 +175,32 @@ function remote() {
     done
 }
 
+function do_ulimit() {
+    local addr=$(ip4domain $1)
+
+    ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
+	sudo su -
+	cat >>/etc/security/limits.conf <<EOF
+	*	soft	nofile	${ULIMIT}
+	*	hard	nofile	${ULIMIT}
+	root	soft	nofile	${ULIMIT}
+	root	hard	nofile	${ULIMIT}
+	EOF
+	cat >>/etc/pam.d/common-session <<EOF
+	session required pam_limits.so
+	EOF
+	cat >>/etc/pam.d/common-session-noninteractive <<EOF
+	session required pam_limits.so
+	EOF
+	cat >>/etc/systemd/system.conf <<EOF
+	DefaultLimitNOFILE=${ULIMIT}
+	EOF
+	cat >>/etc/systemd/user.conf <<EOF
+	DefaultLimitNOFILE=${ULIMIT}
+	EOF
+	EOC
+}
+
 function provision () {
     local domain=$1
     local addr=$(ip4domain $1)
@@ -171,6 +210,7 @@ function provision () {
     local osauv="${jumpdepcfg}/user_variables.yml"
     local -a PROVISION_STEPS
     local -a UPGRADE_STEPS=("sudo apt-get update 2>&1 >> apt.log"
+                            "sudo apt-get -y install qemu-guest-agent"
                             "sudo apt-get -y dist-upgrade 2>&1 >> apt.log")
     case $domain in
         jumpstart)
@@ -202,8 +242,13 @@ function provision () {
             ;;
     esac
     for step in "${UPGRADE_STEPS[@]}"   ; do remote $domain "$step" ; done
+    do_ulimit $domain
     do_reboot $domain
     for step in "${PROVISION_STEPS[@]}" ; do remote $domain "$step" ; done
+    ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
+	sudo su -
+	echo "net.ipv4.ip_forward = 1" >>/etc/sysctl.conf
+	EOC
     case $domain in
         jumpstart)
 	    scp ${SSH_OPTIONS[@]} "interfaces.${domain}" "ubuntu@${addr}:interfaces.${domain}"
@@ -217,20 +262,19 @@ function provision () {
             ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
 		sudo su -
 		apt-get install git
-		git clone https://git.openstack.org/openstack/openstack-ansible $jumposa
+		git clone -b ${OSABRANCH} ${OSAREPO} ${jumposa}
 		cat >>"${jumposa}/ansible-role-requirements.yml" <<EOF
 		- name: os_monasca
 		  scm: git
 		  src: https://git.openstack.org/openstack/openstack-ansible-os_monasca
-		  version: master
+		  version: "${OSABRANCH}"
 		- name: os_monasca-agent
 		  scm: git
 		  src: https://git.openstack.org/openstack/openstack-ansible-os_monasca-agent
-		  version: master
+		  version: "${OSABRANCH}"
 		- name: os_monasca-ui
 		  scm: git
 		  src: https://git.openstack.org/openstack/openstack-ansible-os_monasca-ui
-		  version: master
 		- name: ansible-zookeeper
 		  scm: git
 		  src: https://github.com/Chillisystems/ansible-zookeeper
@@ -312,9 +356,9 @@ function populate_ssh() {
     done
     for target in ${DOMAINS[@]} ; do
         if [[ "$target" != "jumpstart" ]]; then
-            ssh ${SSH_OPTIONS[@]} ubuntu@${addr} sshpass -p 'ubuntu' ssh-copy-id ${SSH_OPTIONS[@]} "ubuntu@${target}"
-            ssh ${SSH_OPTIONS[@]} ubuntu@${addr} scp ${SSH_OPTIONS[@]} .ssh/id_rsa.pub "ubuntu@${target}:id_rsa.pub"
             targetaddr=$(ip4domain $target)
+            ssh ${SSH_OPTIONS[@]} ubuntu@${addr} sshpass -p 'ubuntu' ssh-copy-id ${SSH_OPTIONS[@]} "ubuntu@${targetaddr}"
+            ssh ${SSH_OPTIONS[@]} ubuntu@${addr} scp ${SSH_OPTIONS[@]} .ssh/id_rsa.pub "ubuntu@${targetaddr}:id_rsa.pub"
             echo "### Setting up ansible key on ${target} ($targetaddr)"
             ssh ${SSH_OPTIONS[@]} ubuntu@${targetaddr} <<- EOC
 		sudo su -
@@ -365,21 +409,23 @@ function add_monasca() {
     local gvpath="${jumposa}/inventory/group_vars"
     local rpom="openstack_monasca.yml"
     local gvom="monasca_all.yml"
+    local gvoma="monasca-agent.yml"
     local edm="monasca.yml"
     local cdm="cd_monasca.yml"
     local omi="os-monasca-install.yml"
+    local omai="os-monasca-agent-install.yml"
     local uhe="user_haproxy_extras.yml"
     local hop="horizon.patch"
-    local app="add_pip.patch"
     local jroles="/etc/ansible/roles"
     local -A transfer=( ['rpom']=$rpom
 			['gvom']=$gvom
+			['gvoma']=$gvoma
 			['edm']=$edm
 			['cdm']=$cdm
 			['omi']=$omi
+			['omai']=$omai
 			['uhe']=$uhe
-			['hop']=$hop
-			['app']=$app)
+			['hop']=$hop)
     for cfile in "${!transfer[@]}" ; do
 	copytojump ${transfer[${cfile}]}
     done
@@ -388,29 +434,37 @@ function add_monasca() {
     ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
 	sudo cp "${rpom}" "${rppath}/${rpom}" &&\
 	sudo cp "${gvom}" "${gvpath}/${gvom}" &&\
+	sudo cp "${gvoma}" "${gvpath}/all/${gvoma}" &&\
 	sudo cp "${edm}" "${jumpdepcfg}/env.d/${edm}" &&\
 	sudo cp "${cdm}" "${jumpdepcfg}/conf.d/monasca.yml" &&\
 	sudo cp "${omi}" "${jumposa}/playbooks/${omi}" &&\
+	sudo cp "${omai}" "${jumposa}/playbooks/${omai}" &&\
 	cd "${jroles}/os_horizon" &&\
-	sudo patch -p1 <"/home/ubuntu/${hop}" || echo "*** horizon patch failed"
+	sudo patch -p1 <"/home/ubuntu/${hop}" ||\
+		 echo "*** horizon patch failed"
 	EOC
-#	cd "${jroles}" &&\
-#	sudo patch -p1 <"/home/ubuntu/${app}" || echo "*** add pip patch failed"
 }
 
 function run_playbooks() {
-    local oma="/etc/ansible/roles/os_monasca-agent/defaults/main.yml"
+    local oh="/etc/ansible/roles/os_heat/defaults/main.yml"
     local addr=$(ip4domain 'jumpstart')
 
-    copytojump ${OUD}
+    copytojump ${MAOH}
     ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
-	sudo patch "${oma}" "/home/ubuntu/${OUD}"  &&\
+	sudo patch "${oh}" "/home/ubuntu/${MAOH}" ||\
+		 { echo -e "\n>>>>> patching failed"; exit 1; } &&\
 	cd /opt/openstack-ansible/playbooks &&\
-	sudo openstack-ansible setup-infrastructure.yml --syntax-check &&\
-	sudo openstack-ansible setup-hosts.yml &&\
-	sudo openstack-ansible setup-infrastructure.yml &&\
-	sudo ansible galera_container -m shell -a "mysql -h localhost -e 'show status like \"%wsrep_cluster_%\";'" &&\
-	sudo openstack-ansible setup-openstack.yml
+	sudo openstack-ansible setup-infrastructure.yml --syntax-check ||\
+		 { echo -e "\n>>>>> setup-infrastructure: syntax error"; exit 1; } &&\
+	sudo openstack-ansible setup-hosts.yml ||\
+		 { echo -e "\n>>>> setup-hosts failed"; exit 1; }  &&\
+	sudo openstack-ansible setup-infrastructure.yml ||\
+		 { echo -e "\n>>>>> setup-infrastructure failed"; exit 1; } &&\
+	sudo ansible galera_container -m shell -a \
+		"mysql -h localhost -e 'show status like \"%wsrep_cluster_%\";'" ||\
+		 { echo -e "\n>>>>> setup-galera failed"; exit 1; } &&\
+	sudo openstack-ansible setup-openstack.yml ||\
+		 { echo -e "\n>>>>> setup-openstack failed"; exit 1; }
 	EOC
 }
 
@@ -419,8 +473,6 @@ function verify() {
 }
 
 function main() {
-#    rm -rf $RIG
-#    mkdir -p $RIG
     mknet
     mkstorage '28G'
     for domain in ${DOMAINS[@]} ; do
@@ -436,7 +488,5 @@ function main() {
     run_playbooks
 }
 
-#sudo sysctl -p
-main "$@"
 
-#virsh shutdown guest1 --mode acpi
+main "$@"

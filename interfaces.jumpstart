@@ -11,7 +11,7 @@ iface ens4 inet manual
 
 auto ens4.10
 iface ens4.10 inet static
-    address 172.29.236.1
+    address 172.29.239.254
     netmask 255.255.252.0
     vlan-raw-device ens4
 

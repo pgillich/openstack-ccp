@@ -1,0 +1,11 @@
+diff -u a/main.yml b/main.yml
+--- a/main.yml	2018-02-16 13:24:57.180000000 +0000
++++ b/main.yml	2018-02-16 13:27:49.468000000 +0000
+@@ -207,6 +207,7 @@
+   - python-openstackclient
+   - python-swiftclient
+   - python-troveclient
++  - python-monascaclient
+   - uwsgi
+ 
+ heat_api_init_overrides: {}
