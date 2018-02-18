@@ -1,3 +1,4 @@
+
 diff -ruN o/defaults/main.yml p/defaults/main.yml
 --- o/defaults/main.yml	2018-01-11 10:21:15.316136738 +0100
 +++ p/defaults/main.yml	2018-01-11 10:23:55.909883326 +0100
