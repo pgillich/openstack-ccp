@@ -461,7 +461,7 @@ function run_playbooks() {
 	sudo openstack-ansible setup-infrastructure.yml ||\
 		 { echo -e "\n>>>>> setup-infrastructure failed"; exit 1; } &&\
 	sudo ansible galera_container -m shell -a \
-		"mysql -h localhost -e 'show status like \"%wsrep_cluster_%\";'" ||\
+		 "mysql -h localhost -e 'show status like \"%wsrep_cluster_%\";'" ||\
 		 { echo -e "\n>>>>> setup-galera failed"; exit 1; } &&\
 	sudo openstack-ansible setup-openstack.yml ||\
 		 { echo -e "\n>>>>> setup-openstack failed"; exit 1; }
