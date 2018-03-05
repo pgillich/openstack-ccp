@@ -4,7 +4,8 @@ if [[ "$1" = "debug" ]]; then
 fi
 
 OSAREPO="https://git.openstack.org/openstack/openstack-ansible"
-OSABRANCH="stable/queens"
+OSKVER="queens"
+OSABRANCH="stable/${OSKVER}"
 ARCHURI="https://cloud-images.ubuntu.com/xenial/current"
 ARCHIMAGE="xenial-server-cloudimg-amd64-disk1.img"
 IMAGE="xenserv.img"
@@ -12,7 +13,7 @@ SSH_OPTIONS=(-o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o Us
 PUBKEY=$(<${HOME}/.ssh/id_rsa.pub)
 MYDIR=$(dirname $(readlink -f "$0"))
 DOMAINS=('jumpstart' 'infra1' 'storage1' 'log1' 'compute1' 'compute2')
-declare -A IMGSIZ=( ['jumpstart']='4G' ['infra1']='28G' ['storage1']='8G' ['log1']='8G' ['compute1']='16G' ['compute2']='16G' )
+declare -A IMGSIZ=( ['jumpstart']='4G' ['infra1']='32G' ['storage1']='8G' ['log1']='8G' ['compute1']='16G' ['compute2']='16G' )
 declare -A MEMSIZ=( ['jumpstart']='4194304' ['infra1']='8388608' ['storage1']='8388608' ['log1']='8388608' ['compute1']='8388608' ['compute2']='8388608' )
 ULIMIT=4096 # 4096 should be ok...
 DELAY=10
@@ -201,6 +202,18 @@ function do_ulimit() {
 	EOC
 }
 
+function add_uca () {
+    local addr=$(ip4domain $1)
+    local aptfile="/etc/apt/sources.list.d/default.list"
+
+    ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
+	sudo su -
+	cat << EOF > ${aptfile}
+	deb http://ubuntu-cloud.archive.canonical.com/ubuntu xenial-updates/${OSKVER} main
+	EOF
+	EOC
+}
+
 function provision () {
     local domain=$1
     local addr=$(ip4domain $1)
@@ -225,6 +238,22 @@ function provision () {
                                 `" sshpass"`
                                 `" 2>&1 >> apt.log")
             ;;
+         infra1)
+            PROVISION_STEPS=("sudo apt-get -y install"`
+                                `" bridge-utils"`
+                                `" debootstrap"`
+                                `" ifenslave"`
+                                `" ifenslave-2.6"`
+                                `" lsof"`
+                                `" lvm2"`
+                                `" ntp"`
+                                `" ntpdate"`
+                                `" tcpdump"`
+                                `" vlan"`
+                                `" python"`
+                                `" openvswitch-switch"`
+                                `" 2>&1 >> apt.log")
+            ;;
          *)
             PROVISION_STEPS=("sudo apt-get -y install"`
                                 `" bridge-utils"`
@@ -241,6 +270,7 @@ function provision () {
                                 `" 2>&1 >> apt.log")
             ;;
     esac
+    #add_uca $domain
     for step in "${UPGRADE_STEPS[@]}"   ; do remote $domain "$step" ; done
     do_ulimit $domain
     do_reboot $domain
@@ -474,7 +504,7 @@ function verify() {
 
 function main() {
     mknet
-    mkstorage '28G'
+    mkstorage '32G'
     for domain in ${DOMAINS[@]} ; do
         mkseed $domain
         mkimage $domain
