@@ -232,6 +232,7 @@ function provision () {
                                 `" ntp"`
                                 `" ntpdate"`
                                 `" python-dev"`
+                                `" libssl-dev libffi-dev"`
                                 `" python-crypto"`
                                 `" python-yaml"`
                                 `" vlan"`
@@ -293,15 +294,18 @@ function provision () {
 		sudo su -
 		apt-get install git
 		git clone -b ${OSABRANCH} ${OSAREPO} ${jumposa}
+		pushd ${jumposa}
+		git checkout "54870ed"
+		popd
 		cat >>"${jumposa}/ansible-role-requirements.yml" <<EOF
 		- name: os_monasca
 		  scm: git
 		  src: https://git.openstack.org/openstack/openstack-ansible-os_monasca
-		  version: "${OSABRANCH}"
+		  version: "a6f0e9d"
 		- name: os_monasca-agent
 		  scm: git
 		  src: https://git.openstack.org/openstack/openstack-ansible-os_monasca-agent
-		  version: "${OSABRANCH}"
+		  version: "e88aff1"
 		- name: os_monasca-ui
 		  scm: git
 		  src: https://git.openstack.org/openstack/openstack-ansible-os_monasca-ui
@@ -481,14 +485,15 @@ function run_playbooks() {
 
     copytojump ${MAOH}
     ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
+	export LC_ALL=C
 	sudo patch "${oh}" "/home/ubuntu/${MAOH}" ||\
 		 { echo -e "\n>>>>> patching failed"; exit 1; } &&\
 	cd /opt/openstack-ansible/playbooks &&\
 	sudo openstack-ansible setup-infrastructure.yml --syntax-check ||\
 		 { echo -e "\n>>>>> setup-infrastructure: syntax error"; exit 1; } &&\
 	sudo openstack-ansible setup-hosts.yml ||\
-		 { echo -e "\n>>>> setup-hosts failed"; exit 1; }  &&\
-	sudo openstack-ansible setup-infrastructure.yml ||\
+		 { echo -e "\n>>>> setup-hosts failed"; exit 1; } &&\
+	sudo openstack-ansible -v setup-infrastructure.yml ||\
 		 { echo -e "\n>>>>> setup-infrastructure failed"; exit 1; } &&\
 	sudo ansible galera_container -m shell -a \
 		 "mysql -h localhost -e 'show status like \"%wsrep_cluster_%\";'" ||\

@@ -1,18 +1,16 @@
-
 diff -ruN o/defaults/main.yml p/defaults/main.yml
 --- o/defaults/main.yml	2018-01-11 10:21:15.316136738 +0100
-+++ p/defaults/main.yml	2018-01-11 10:23:55.909883326 +0100
-@@ -300,7 +300,8 @@
++++ p/defaults/main.yml	2018-03-11 13:39:50.428980696 +0100
+@@ -297,6 +297,8 @@
+   - sahara_dashboard
+   - trove_dashboard
+   - designate_dashboard
++  - python-monascaclient
++  - monasca-ui
  
  # This variable is used to install additional pip packages
  # that could be needed for additional dashboards
--horizon_optional_pip_packages: []
-+horizon_optional_pip_packages:
-+  - monasca-ui
- 
- # This variable is used to update the horizon translations from
- # Zanata, this can be set to "True" when testing translations,
-@@ -325,3 +326,7 @@
+@@ -325,3 +327,7 @@
  horizon_websso_initial_choice: "credentials"
  
  horizon_panels: "{{ _horizon_panels }}"
