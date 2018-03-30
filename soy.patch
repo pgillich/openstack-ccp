@@ -1,0 +1,10 @@
+diff -ruN a/setup-openstack.yml b/setup-openstack.yml
+--- a/setup-openstack.yml	2018-03-24 14:09:36.208000000 +0000
++++ b/setup-openstack.yml	2018-03-24 14:12:37.924000000 +0000
+@@ -42,4 +42,5 @@
+ - include: os-tacker-install.yml
+ - include: os-tempest-install.yml
+   when: (tempest_install | default(False)) | bool or (tempest_run | default(False)) | bool
+-
++- include: os-monasca-install.yml
++- include: os-monasca-agent-install.yml

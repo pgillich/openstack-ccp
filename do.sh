@@ -13,8 +13,9 @@ SSH_OPTIONS=(-o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o Us
 PUBKEY=$(<${HOME}/.ssh/id_rsa.pub)
 MYDIR=$(dirname $(readlink -f "$0"))
 DOMAINS=('jumpstart' 'infra1' 'storage1' 'log1' 'compute1' 'compute2')
-declare -A IMGSIZ=( ['jumpstart']='4G' ['infra1']='32G' ['storage1']='8G' ['log1']='8G' ['compute1']='16G' ['compute2']='16G' )
-declare -A MEMSIZ=( ['jumpstart']='4194304' ['infra1']='8388608' ['storage1']='8388608' ['log1']='8388608' ['compute1']='8388608' ['compute2']='8388608' )
+declare -A IMGSIZ=( ['jumpstart']='16G' ['infra1']='48G' ['storage1']='16G' ['log1']='16G' ['compute1']='16G' ['compute2']='16G' )
+declare -A MEMSIZ=( ['jumpstart']='4194304' ['infra1']='16777216' ['storage1']='8388608' ['log1']='8388608' ['compute1']='8388608' ['compute2']='8388608' )
+declare -A VCPUS=( ['jumpstart']='2' ['infra1']='4' ['storage1']='2' ['log1']='2' ['compute1']='2' ['compute2']='2' )
 ULIMIT=4096 # 4096 should be ok...
 DELAY=10
 OUCPATCH="openstack_user_config.yaml.diff"
@@ -103,7 +104,7 @@ function mkdomain () {
 	    <features>
 	        <acpi/>
 	    </features>
-	    <vcpu>2</vcpu>
+	    <vcpu>${VCPUS[${1}]}</vcpu>
 	    <devices>
 	        <disk type="file" device="disk">
 	            <driver type="qcow2" cache="none"/>
@@ -420,7 +421,6 @@ function configure_creds() {
 	monasca_api_influxdb_password:
 	monasca_persister_influxdb_password:
 	monasca_service_password:
-	monasca_agent_password:
 	
 	## Monasca-agent options
 	monasca_agent_password:
@@ -439,8 +439,10 @@ function add_monasca() {
     local addr=$(ip4domain 'jumpstart')
     local jumposa="/opt/openstack-ansible"
     local jumpdepcfg="/etc/openstack_deploy"
+    local jroles="/etc/ansible/roles"
     local rppath="${jumposa}/playbooks/defaults/repo_packages"
     local gvpath="${jumposa}/inventory/group_vars"
+    local rpomsd="${jroles}/os_monasca/extras/repo_packages"
     local rpom="openstack_monasca.yml"
     local gvom="monasca_all.yml"
     local gvoma="monasca-agent.yml"
@@ -450,23 +452,27 @@ function add_monasca() {
     local omai="os-monasca-agent-install.yml"
     local uhe="user_haproxy_extras.yml"
     local hop="horizon.patch"
-    local jroles="/etc/ansible/roles"
-    local -A transfer=( ['rpom']=$rpom
-			['gvom']=$gvom
+    local soy="${jumposa}/playbooks/setup-openstack.yml"
+    local soyp="soy.patch"
+    local storm="${jroles}/ansible-storm/defaults/main.yml"
+    local stormp="storm.patch"
+    local -A transfer=( ['gvom']=$gvom
 			['gvoma']=$gvoma
 			['edm']=$edm
 			['cdm']=$cdm
 			['omi']=$omi
 			['omai']=$omai
 			['uhe']=$uhe
-			['hop']=$hop)
+			['hop']=$hop
+			['soyp']=$soyp
+			['stormp']=$stormp )
     for cfile in "${!transfer[@]}" ; do
 	copytojump ${transfer[${cfile}]}
     done
 
 #sudo cp "${uhe}" "${jumpdefcfg}/${uhe}" &&\
     ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
-	sudo cp "${rpom}" "${rppath}/${rpom}" &&\
+	sudo cp "${rpomsd}/${rpom}" "${rppath}/${rpom}" &&\
 	sudo cp "${gvom}" "${gvpath}/${gvom}" &&\
 	sudo cp "${gvoma}" "${gvpath}/all/${gvoma}" &&\
 	sudo cp "${edm}" "${jumpdepcfg}/env.d/${edm}" &&\
@@ -475,7 +481,11 @@ function add_monasca() {
 	sudo cp "${omai}" "${jumposa}/playbooks/${omai}" &&\
 	cd "${jroles}/os_horizon" &&\
 	sudo patch -p1 <"/home/ubuntu/${hop}" ||\
-		 echo "*** horizon patch failed"
+		 { echo "*** horizon patch failed"; exit 1; } &&\
+	sudo patch ${soy} "/home/ubuntu/${soyp}" ||\
+	         { echo "*** setup-openstack patch failed"; exit 1; } &&\
+	sudo patch ${storm} "/home/ubuntu/${stormp}" ||\
+	         { echo "*** patching storm role failed"; exit 1; }
 	EOC
 }
 
@@ -493,7 +503,7 @@ function run_playbooks() {
 		 { echo -e "\n>>>>> setup-infrastructure: syntax error"; exit 1; } &&\
 	sudo openstack-ansible setup-hosts.yml ||\
 		 { echo -e "\n>>>> setup-hosts failed"; exit 1; } &&\
-	sudo openstack-ansible -v setup-infrastructure.yml ||\
+	sudo openstack-ansible setup-infrastructure.yml ||\
 		 { echo -e "\n>>>>> setup-infrastructure failed"; exit 1; } &&\
 	sudo ansible galera_container -m shell -a \
 		 "mysql -h localhost -e 'show status like \"%wsrep_cluster_%\";'" ||\
@@ -508,6 +518,7 @@ function verify() {
 }
 
 function main() {
+    sudo sysctl vm.swappiness=10
     mknet
     mkstorage '32G'
     for domain in ${DOMAINS[@]} ; do
