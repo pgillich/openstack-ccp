@@ -1,16 +1,16 @@
-diff -ruN o/defaults/main.yml p/defaults/main.yml
---- o/defaults/main.yml	2018-01-11 10:21:15.316136738 +0100
-+++ p/defaults/main.yml	2018-03-11 13:39:50.428980696 +0100
-@@ -297,6 +297,8 @@
-   - sahara_dashboard
+diff -ruN u/defaults/main.yml v/defaults/main.yml
+--- u/defaults/main.yml	2018-04-06 09:47:50.663311051 +0200
++++ v/defaults/main.yml	2018-04-09 09:26:23.312742521 +0200
+@@ -313,6 +313,8 @@
    - trove_dashboard
    - designate_dashboard
+   - octavia_dashboard
 +  - python-monascaclient
 +  - monasca-ui
  
  # This variable is used to install additional pip packages
  # that could be needed for additional dashboards
-@@ -325,3 +327,7 @@
+@@ -341,3 +343,7 @@
  horizon_websso_initial_choice: "credentials"
  
  horizon_panels: "{{ _horizon_panels }}"
@@ -18,9 +18,9 @@ diff -ruN o/defaults/main.yml p/defaults/main.yml
 +#Monasca
 +horizon_enable_monasca_ui: True
 +horizon_grafana_url: "https://{{ external_lb_vip_address }}:3000"
-diff -ruN o/tasks/horizon_post_install.yml p/tasks/horizon_post_install.yml
---- o/tasks/horizon_post_install.yml	2018-01-11 10:48:00.000000000 +0100
-+++ p/tasks/horizon_post_install.yml	2018-01-11 12:14:27.123215643 +0100
+diff -ruN u/tasks/horizon_post_install.yml v/tasks/horizon_post_install.yml
+--- u/tasks/horizon_post_install.yml	2018-04-06 09:47:20.038962749 +0200
++++ v/tasks/horizon_post_install.yml	2018-01-11 12:14:27.000000000 +0100
 @@ -103,3 +103,16 @@
    register: async_compress_static_files
    async: 600
@@ -38,9 +38,9 @@ diff -ruN o/tasks/horizon_post_install.yml p/tasks/horizon_post_install.yml
 +    src: "monasca-ui/local_settings.py.j2"
 +    dest: "{{ horizon_lib_dir }}/monitoring/config/local_settings.py"
 +  notify: Restart apache2
-diff -ruN o/templates/monasca-ui/local_settings.py.j2 p/templates/monasca-ui/local_settings.py.j2
---- o/templates/monasca-ui/local_settings.py.j2	1970-01-01 01:00:00.000000000 +0100
-+++ p/templates/monasca-ui/local_settings.py.j2	2017-12-05 06:32:37.000000000 +0100
+diff -ruN u/templates/monasca-ui/local_settings.py.j2 v/templates/monasca-ui/local_settings.py.j2
+--- u/templates/monasca-ui/local_settings.py.j2	1970-01-01 01:00:00.000000000 +0100
++++ v/templates/monasca-ui/local_settings.py.j2	2017-12-05 06:32:37.000000000 +0100
 @@ -0,0 +1,86 @@
 +#  Licensed under the Apache License, Version 2.0 (the "License"); you may
 +#  not use this file except in compliance with the License. You may obtain

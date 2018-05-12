@@ -1,0 +1,12 @@
+diff -ruN c/galera_client/defaults/main.yml d/galera_client/defaults/main.yml
+--- c/galera_client/defaults/main.yml	2018-05-05 13:00:00.000000000 +0200
++++ d/galera_client/defaults/main.yml	2018-05-07 11:50:25.360080220 +0200
+@@ -36,7 +36,7 @@
+ galera_client_distro_package_pins: [{ package: "*", release: MariaDB, priority: "1001" }]
+ 
+ ## APT Cache Options
+-cache_timeout: 600
++cache_timeout: 3600
+ 
+ # Set the package install state for distribution and pip packages
+ # Options are 'present' and 'latest'

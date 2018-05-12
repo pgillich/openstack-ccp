@@ -3,19 +3,21 @@ if [[ "$1" = "debug" ]]; then
     set -x
 fi
 
+MYDIR=$(dirname $(readlink -f "$0"))
+POOL=${MYDIR}
 OSAREPO="https://git.openstack.org/openstack/openstack-ansible"
 OSKVER="queens"
 OSABRANCH="stable/${OSKVER}"
+OSATAG="17.0.3"
 ARCHURI="https://cloud-images.ubuntu.com/xenial/current"
 ARCHIMAGE="xenial-server-cloudimg-amd64-disk1.img"
 IMAGE="xenserv.img"
 SSH_OPTIONS=(-o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null -o LogLevel=error)
 PUBKEY=$(<${HOME}/.ssh/id_rsa.pub)
-MYDIR=$(dirname $(readlink -f "$0"))
 DOMAINS=('jumpstart' 'infra1' 'storage1' 'log1' 'compute1' 'compute2')
 declare -A IMGSIZ=( ['jumpstart']='16G' ['infra1']='48G' ['storage1']='16G' ['log1']='16G' ['compute1']='16G' ['compute2']='16G' )
-declare -A MEMSIZ=( ['jumpstart']='4194304' ['infra1']='16777216' ['storage1']='8388608' ['log1']='8388608' ['compute1']='8388608' ['compute2']='8388608' )
-declare -A VCPUS=( ['jumpstart']='2' ['infra1']='4' ['storage1']='2' ['log1']='2' ['compute1']='2' ['compute2']='2' )
+declare -A MEMSIZ=( ['jumpstart']='4194304' ['infra1']='20971520' ['storage1']='8388608' ['log1']='8388608' ['compute1']='8388608' ['compute2']='8388608' )
+declare -A VCPUS=( ['jumpstart']='2' ['infra1']='6' ['storage1']='2' ['log1']='2' ['compute1']='2' ['compute2']='2' )
 ULIMIT=4096 # 4096 should be ok...
 DELAY=10
 OUCPATCH="openstack_user_config.yaml.diff"
@@ -33,21 +35,21 @@ function mkseed () {
 	ssh_authorized_keys:
 	    - ${PUBKEY}
 	EOF
-    cloud-localds "${seed}.iso" ${seed}
+    cloud-localds "${POOL}/${seed}.iso" ${seed}
     echo -e "\n### $1: cloudinit: ${seed}.iso\n"
 }
 
 function mkimage () {
-    wget -nc -q -O ${IMAGE} "${ARCHURI}/${ARCHIMAGE}"
-    qemu-img convert -O qcow2 ${IMAGE}  "${1}.qcow2"
-    qemu-img resize "${1}.qcow2" ${IMGSIZ[${1}]}
-    qemu-img info "${1}.qcow2"
+    wget -nc -q -O "${POOL}/${IMAGE}" "${ARCHURI}/${ARCHIMAGE}"
+    qemu-img convert -O qcow2 "${POOL}/${IMAGE}"  "${POOL}/${1}.qcow2"
+    qemu-img resize "${POOL}/${1}.qcow2" ${IMGSIZ[${1}]}
+    qemu-img info "${POOL}/${1}.qcow2"
 }
 
 function mkstorage () {
     local size=${1:-'16G'}
-    qemu-img create -f qcow2 storage.qcow2 $size
-    qemu-img info storage.qcow2
+    qemu-img create -f qcow2 "${POOL}/storage.qcow2" $size
+    qemu-img info ${POOL}/storage.qcow2
 }
 
 function ip4domain () {
@@ -108,11 +110,11 @@ function mkdomain () {
 	    <devices>
 	        <disk type="file" device="disk">
 	            <driver type="qcow2" cache="none"/>
-	            <source file="${MYDIR}/${1}.qcow2"/>
+	            <source file="${POOL}/${1}.qcow2"/>
 	            <target dev="vda" bus="virtio"/>
 	        </disk>
 	        <disk type="file" device="cdrom">
-	            <source file="${MYDIR}/seed-${1}.iso"/>
+	            <source file="${POOL}/seed-${1}.iso"/>
 	            <target dev="vdb" bus="virtio"/>
 	            <readonly/>
 	        </disk>
@@ -121,7 +123,7 @@ function mkdomain () {
         cat <<- EOF >> "${1}.xml"
 	        <disk type="file" device="disk">
 	            <driver type="qcow2" cache="none"/>
-	            <source file="${MYDIR}/storage.qcow2"/>
+	            <source file="${POOL}/storage.qcow2"/>
 	            <target dev="vdc" bus="virtio"/>
 	        </disk>
 	EOF
@@ -172,7 +174,7 @@ function remote() {
 
     echo "### $1: Doing ${step} on ${ipaddr}"
     until ssh ${SSH_OPTIONS[@]} ubuntu@${ipaddr} ${step}; do
-        echo "### ssh to $ipaddr failed, retrying in $DLEAY seconds..."
+        echo "### ssh to $ipaddr failed, retrying in $DELAY seconds..."
         sleep $DELAY
     done
 }
@@ -295,18 +297,18 @@ function provision () {
 		sudo su -
 		apt-get install git
 		git clone -b ${OSABRANCH} ${OSAREPO} ${jumposa}
-		pushd ${jumposa}
-		git checkout "54870ed"
+		pushd "${jumposa}"
+		git checkout "${OSATAG}"
 		popd
 		cat >>"${jumposa}/ansible-role-requirements.yml" <<EOF
 		- name: os_monasca
 		  scm: git
 		  src: https://git.openstack.org/openstack/openstack-ansible-os_monasca
-		  version: "a6f0e9d"
+		  version: "${OSABRANCH}"
 		- name: os_monasca-agent
 		  scm: git
 		  src: https://git.openstack.org/openstack/openstack-ansible-os_monasca-agent
-		  version: "e88aff1"
+		  version: "${OSABRANCH}"
 		- name: os_monasca-ui
 		  scm: git
 		  src: https://git.openstack.org/openstack/openstack-ansible-os_monasca-ui
@@ -442,7 +444,9 @@ function add_monasca() {
     local jroles="/etc/ansible/roles"
     local rppath="${jumposa}/playbooks/defaults/repo_packages"
     local gvpath="${jumposa}/inventory/group_vars"
-    local rpomsd="${jroles}/os_monasca/extras/repo_packages"
+    local edpath="${jumposa}/inventory/env.d"
+    local omexsd="${jroles}/os_monasca/extras"
+    local rpomsd="${omexsd}/repo_packages"
     local rpom="openstack_monasca.yml"
     local gvom="monasca_all.yml"
     local gvoma="monasca-agent.yml"
@@ -454,8 +458,8 @@ function add_monasca() {
     local hop="horizon.patch"
     local soy="${jumposa}/playbooks/setup-openstack.yml"
     local soyp="soy.patch"
-    local storm="${jroles}/ansible-storm/defaults/main.yml"
-    local stormp="storm.patch"
+    local gact="gact.patch"
+    local mu="mu.patch"
     local -A transfer=( ['gvom']=$gvom
 			['gvoma']=$gvoma
 			['edm']=$edm
@@ -465,27 +469,36 @@ function add_monasca() {
 			['uhe']=$uhe
 			['hop']=$hop
 			['soyp']=$soyp
-			['stormp']=$stormp )
+			['gact']=$gact
+			['mu']=$mu )
     for cfile in "${!transfer[@]}" ; do
 	copytojump ${transfer[${cfile}]}
     done
 
-#sudo cp "${uhe}" "${jumpdefcfg}/${uhe}" &&\
     ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
 	sudo cp "${rpomsd}/${rpom}" "${rppath}/${rpom}" &&\
-	sudo cp "${gvom}" "${gvpath}/${gvom}" &&\
+	sudo cp "${omexsd}/group_vars/${gvom}" "${gvpath}/${gvom}" &&\
 	sudo cp "${gvoma}" "${gvpath}/all/${gvoma}" &&\
-	sudo cp "${edm}" "${jumpdepcfg}/env.d/${edm}" &&\
+	sudo cp "${omexsd}/env.d/${edm}" "${edpath}/${edm}" &&\
 	sudo cp "${cdm}" "${jumpdepcfg}/conf.d/monasca.yml" &&\
 	sudo cp "${omi}" "${jumposa}/playbooks/${omi}" &&\
 	sudo cp "${omai}" "${jumposa}/playbooks/${omai}" &&\
 	cd "${jroles}/os_horizon" &&\
 	sudo patch -p1 <"/home/ubuntu/${hop}" ||\
 		 { echo "*** horizon patch failed"; exit 1; } &&\
+	cd "${jroles}" &&\
+	sudo patch -p1 <"/home/ubuntu/${gact}" ||\
+		 { echo "*** galera apt-cache timeout patch failed ***"; exit 1; } &&\
 	sudo patch ${soy} "/home/ubuntu/${soyp}" ||\
-	         { echo "*** setup-openstack patch failed"; exit 1; } &&\
-	sudo patch ${storm} "/home/ubuntu/${stormp}" ||\
-	         { echo "*** patching storm role failed"; exit 1; }
+		 { echo "*** setup-openstack patch failed"; exit 1; } &&\
+	cd "${jroles}/os_monasca" &&\
+	sudo patch -p1 <"/home/ubuntu/${mu}" ||\
+		 { echo "*** os_monasca unicode patch failed ***"; exit 1; } &&\
+	sudo bash <<EOF
+	echo "lxc_cache_prep_pre_commands: \"mv /etc/resolv.conf /var/tmp/resolv.conf || true\"" >> "${jumpdepcfg}/user_variables.yml"
+	echo "lxc_cache_prep_post_commands: \"mv /var/tmp/resolv.conf /etc/resolv.conf || true\"" >> "${jumpdepcfg}/user_variables.yml"
+	sed -e '1,/haproxy_extra_services:/d' "${omexsd}/${uhe}" >> "${gvpath}/haproxy/haproxy.yml"
+	EOF
 	EOC
 }
 

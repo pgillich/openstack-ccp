@@ -1,0 +1,58 @@
+commit 4774c28f7169fbe1ad1d41da6c675154121007a6
+Author: Ferenc Cserepkei <ferenc.cserepkei@ericsson.com>
+Date:   Thu May 10 10:52:36 2018 +0200
+
+    Non-ascii characters in files
+    
+    Ansible's Jinja2 templater reporting an error when encounters with
+    non-ascii characters:
+    
+    An exception occurred during task execution.
+    To see the full traceback, use -vvv. The error was: UnicodeDecodeError:
+    'ascii' codec can't decode byte 0xe2 in position 278:
+    ordinal not in range(128)
+    fatal: [infra1_monasca_container-ba51ad87]: FAILED! =>
+    {"failed": true,
+      "msg": "Unexpected failure during module execution.", "stdout": ""}
+    
+    Change-Id: I4021b46dfe30cd51656dd4c7c68edd2f04b8f6fd
+
+diff --git a/templates/mon_mysql.sql.j2 b/templates/mon_mysql.sql.j2
+index 640ecac..a12d3ca 100644
+--- a/templates/mon_mysql.sql.j2
++++ b/templates/mon_mysql.sql.j2
+@@ -6,7 +6,7 @@
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+-*    http://www.apache.org/licenses/LICENSE-2.0
++*    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+diff --git a/templates/monasca-notification/notification.yaml.j2 b/templates/monasca-notification/notification.yaml.j2
+index 3af26bc..18da90e 100644
+--- a/templates/monasca-notification/notification.yaml.j2
++++ b/templates/monasca-notification/notification.yaml.j2
+@@ -7,7 +7,7 @@
+ # you may not use this file except in compliance with the License.
+ # You may obtain a copy of the License at
+ #
+-#    http://www.apache.org/licenses/LICENSE-2.0
++#    http://www.apache.org/licenses/LICENSE-2.0
+ #
+ # Unless required by applicable law or agreed to in writing, software
+ # distributed under the License is distributed on an "AS IS" BASIS,
+diff --git a/templates/monasca-thresh/thresh-config.yml.j2 b/templates/monasca-thresh/thresh-config.yml.j2
+index 61c8b1f..d295964 100644
+--- a/templates/monasca-thresh/thresh-config.yml.j2
++++ b/templates/monasca-thresh/thresh-config.yml.j2
+@@ -7,7 +7,7 @@
+ # you may not use this file except in compliance with the License.
+ # You may obtain a copy of the License at
+ #
+-#    http://www.apache.org/licenses/LICENSE-2.0
++#    http://www.apache.org/licenses/LICENSE-2.0
+ #
+ # Unless required by applicable law or agreed to in writing, software
+ # distributed under the License is distributed on an "AS IS" BASIS,

@@ -13,17 +13,21 @@
 
 - name: Install monasca agent
   hosts: all
-  gather_facts: "{{ gather_facts | default(True) }}"
+  gather_facts: "{{ osa_gather_facts | default(True) }}"
   user: root
+  environment: "{{ deployment_environment_variables | default({}) }}"
+  vars:
+    is_metal: "{{ properties.is_metal|default(false) }}"
+  tags:
+    - monasca
   pre_tasks:
-    - include: common-tasks/os-lxc-container-setup.yml
+    - include: "common-tasks/os-{{ container_tech | default('lxc') }}-container-setup.yml"
       static: no
     - include: common-tasks/os-log-dir-setup.yml
       vars:
         log_dirs:
           - src: "/openstack/log/{{ inventory_hostname }}-monasca"
             dest: "/var/log/monasca"
-    - include: common-tasks/package-cache-proxy.yml
   roles:
     - role: "os_monasca-agent"
     - role: "openstack_openrc"
@@ -38,10 +42,6 @@
     - role: "system_crontab_coordination"
       tags:
         - crontab
-  vars:
-    is_metal: "{{ properties.is_metal|default(false) }}"
-  tags:
-    - monasca
 
 - name: Set user/permissions for monitoring rabbitmq
   hosts: "{{ rabbitmq_host_group | default('rabbitmq_all') }}[0]"
@@ -59,6 +59,7 @@
         vhost: "{{ item }}"
         read_priv: .*
         state: "present"
+      no_log: true
       when: rabbitmq_monitoring_password is defined
       with_items:
         - "{{ rabbitmq_vhosts.stdout_lines }}"

@@ -18,24 +18,31 @@
 
 - name: Install monasca server
   hosts: monasca_all
-  gather_facts: "{{ gather_facts | default(True) }}"
+  gather_facts: "{{ osa_gather_facts | default(True) }}"
   user: root
+  environment: "{{ deployment_environment_variables | default({}) }}"
+  vars:
+    is_metal: "{{ properties.is_metal|default(false) }}"
+  tags:
+    - monasca
   pre_tasks:
-    - include: common-tasks/os-lxc-container-setup.yml
+    - name: Configure container(s)
+      include: "common-tasks/os-{{ container_tech | default('lxc') }}-container-setup.yml"
       static: no
-    - include: common-tasks/os-log-dir-setup.yml
+    - name: Configure log directories
+      include: common-tasks/os-log-dir-setup.yml
       vars:
         log_dirs:
           - src: "/openstack/log/{{ inventory_hostname }}-monasca"
             dest: "/var/log/monasca"
     - include: common-tasks/mysql-db-user.yml
+      static: no
       vars:
         user_name: "{{ monasca_galera_user }}"
         password: "{{ monasca_container_mysql_password }}"
         login_host: "{{ monasca_galera_address }}"
         db_name: "{{ monasca_galera_database }}"
       when: inventory_hostname == groups['monasca_all'][0]
-    - include: common-tasks/package-cache-proxy.yml
   roles:
     - role: "os_monasca"
       monasca_thresh_git_repo: "{{ openstack_repo_git_url }}/monasca-thresh"
@@ -52,7 +59,3 @@
     - role: "system_crontab_coordination"
       tags:
         - crontab
-  vars:
-    is_metal: "{{ properties.is_metal|default(false) }}"
-  tags:
-    - monasca
