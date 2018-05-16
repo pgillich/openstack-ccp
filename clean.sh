@@ -1,5 +1,5 @@
 #!/bin/bash
-DOMAINS=('infra1' 'storage1' 'log1' 'compute1' 'compute2' 'jumpstart')
+DOMAINS=('infra1' 'storage1' 'log1' 'mon1' 'compute1' 'compute2' 'jumpstart')
 MYDIR=$(dirname $(readlink -f "$0"))
 POOL=${MYDIR}
 for domain in ${DOMAINS[@]} ; do

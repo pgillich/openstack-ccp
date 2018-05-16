@@ -8,16 +8,16 @@ POOL=${MYDIR}
 OSAREPO="https://git.openstack.org/openstack/openstack-ansible"
 OSKVER="queens"
 OSABRANCH="stable/${OSKVER}"
-OSATAG="17.0.3"
+OSATAG="17.0.4"
 ARCHURI="https://cloud-images.ubuntu.com/xenial/current"
 ARCHIMAGE="xenial-server-cloudimg-amd64-disk1.img"
 IMAGE="xenserv.img"
 SSH_OPTIONS=(-o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null -o LogLevel=error)
 PUBKEY=$(<${HOME}/.ssh/id_rsa.pub)
-DOMAINS=('jumpstart' 'infra1' 'storage1' 'log1' 'compute1' 'compute2')
-declare -A IMGSIZ=( ['jumpstart']='16G' ['infra1']='48G' ['storage1']='16G' ['log1']='16G' ['compute1']='16G' ['compute2']='16G' )
-declare -A MEMSIZ=( ['jumpstart']='4194304' ['infra1']='20971520' ['storage1']='8388608' ['log1']='8388608' ['compute1']='8388608' ['compute2']='8388608' )
-declare -A VCPUS=( ['jumpstart']='2' ['infra1']='6' ['storage1']='2' ['log1']='2' ['compute1']='2' ['compute2']='2' )
+DOMAINS=('jumpstart' 'infra1' 'storage1' 'mon1' 'log1' 'compute1' 'compute2')
+declare -A IMGSIZ=( ['jumpstart']='16G' ['infra1']='48G' ['storage1']='16G' ['mon1']='16G' ['log1']='16G' ['compute1']='16G' ['compute2']='16G' )
+declare -A MEMSIZ=( ['jumpstart']='4194304' ['infra1']='16777216' ['storage1']='8388608' ['mon1']='8388608' ['log1']='4194304' ['compute1']='8388608' ['compute2']='8388608' )
+declare -A VCPUS=( ['jumpstart']='2' ['infra1']='6' ['storage1']='2' ['mon1']='4' ['log1']='2' ['compute1']='2' ['compute2']='2' )
 ULIMIT=4096 # 4096 should be ok...
 DELAY=10
 OUCPATCH="openstack_user_config.yaml.diff"
@@ -446,6 +446,7 @@ function add_monasca() {
     local gvpath="${jumposa}/inventory/group_vars"
     local edpath="${jumposa}/inventory/env.d"
     local omexsd="${jroles}/os_monasca/extras"
+    local omaexsd="${jroles}/os_monasca-agent/extras"
     local rpomsd="${omexsd}/repo_packages"
     local rpom="openstack_monasca.yml"
     local gvom="monasca_all.yml"
@@ -459,26 +460,20 @@ function add_monasca() {
     local soy="${jumposa}/playbooks/setup-openstack.yml"
     local soyp="soy.patch"
     local gact="gact.patch"
-    local mu="mu.patch"
-    local -A transfer=( ['gvom']=$gvom
-			['gvoma']=$gvoma
-			['edm']=$edm
-			['cdm']=$cdm
+    local -A transfer=( ['cdm']=$cdm
 			['omi']=$omi
 			['omai']=$omai
-			['uhe']=$uhe
 			['hop']=$hop
 			['soyp']=$soyp
-			['gact']=$gact
-			['mu']=$mu )
+			['gact']=$gact )
+
     for cfile in "${!transfer[@]}" ; do
 	copytojump ${transfer[${cfile}]}
     done
-
     ssh ${SSH_OPTIONS[@]} ubuntu@${addr} <<- EOC
 	sudo cp "${rpomsd}/${rpom}" "${rppath}/${rpom}" &&\
 	sudo cp "${omexsd}/group_vars/${gvom}" "${gvpath}/${gvom}" &&\
-	sudo cp "${gvoma}" "${gvpath}/all/${gvoma}" &&\
+	sudo cp "${omaexsd}/group_vars/all/${gvoma}" "${gvpath}/all/${gvoma}" &&\
 	sudo cp "${omexsd}/env.d/${edm}" "${edpath}/${edm}" &&\
 	sudo cp "${cdm}" "${jumpdepcfg}/conf.d/monasca.yml" &&\
 	sudo cp "${omi}" "${jumposa}/playbooks/${omi}" &&\
@@ -491,9 +486,6 @@ function add_monasca() {
 		 { echo "*** galera apt-cache timeout patch failed ***"; exit 1; } &&\
 	sudo patch ${soy} "/home/ubuntu/${soyp}" ||\
 		 { echo "*** setup-openstack patch failed"; exit 1; } &&\
-	cd "${jroles}/os_monasca" &&\
-	sudo patch -p1 <"/home/ubuntu/${mu}" ||\
-		 { echo "*** os_monasca unicode patch failed ***"; exit 1; } &&\
 	sudo bash <<EOF
 	echo "lxc_cache_prep_pre_commands: \"mv /etc/resolv.conf /var/tmp/resolv.conf || true\"" >> "${jumpdepcfg}/user_variables.yml"
 	echo "lxc_cache_prep_post_commands: \"mv /var/tmp/resolv.conf /etc/resolv.conf || true\"" >> "${jumpdepcfg}/user_variables.yml"
