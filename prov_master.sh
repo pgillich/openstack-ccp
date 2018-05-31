@@ -65,4 +65,3 @@ diff -ruN a/openstack-helm-infra/tools/images/kubeadm-aio/assets/opt/playbooks/v
        - 8.8.4.4
      cluster:
 EOF
-source <(curl -s https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get) --version v2.8.2

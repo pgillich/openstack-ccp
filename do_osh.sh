@@ -4,7 +4,6 @@ if [[ "$1" = "debug" ]]; then
 fi
 
 MYDIR=$(dirname $(readlink -f "$0"))
-#POOL="/media/ethfci/e4dbcbb8-5428-497e-ae2d-f184b8d00f01/tmp/rig"
 POOL=$MYDIR
 ARCHURI="https://cloud-images.ubuntu.com/xenial/current"
 ARCHIMAGE="xenial-server-cloudimg-amd64-disk1.img"
@@ -239,10 +238,12 @@ function provision () {
             scp ${SSH_OPTIONS[@]} prov_master.sh ubuntu@${addr}:prov_master.sh
             remote $domain "bash prov_master.sh"
             ;;
-        *)
+        k8s-m)
             remote $domain "source "`
-                  `"<(curl -s https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get)"`
-                  `" --version v2.8.2"
+                             `"<(curl -s https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get)"`
+                             `" --version v2.8.2"
+            ;;
+        *)
             ;;
     esac
     do_reboot $domain
@@ -315,7 +316,7 @@ function do_deploy() {
 }
 
 function main() {
-#    sudo sysctl vm.swappiness=10
+    sudo sysctl vm.swappiness=10
     mknet
     for domain in ${DOMAINS[@]} ; do
         mkseed $domain
