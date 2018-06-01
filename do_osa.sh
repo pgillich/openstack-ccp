@@ -4,7 +4,7 @@ if [[ "$1" = "debug" ]]; then
 fi
 
 MYDIR=$(dirname $(readlink -f "$0"))
-POOL="/media/ethfci/e4dbcbb8-5428-497e-ae2d-f184b8d00f01/tmp/rig"
+POOL=$MYDIR
 OSAREPO="https://git.openstack.org/openstack/openstack-ansible"
 OSKVER="queens"
 OSABRANCH="stable/${OSKVER}"

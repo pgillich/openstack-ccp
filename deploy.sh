@@ -1,7 +1,7 @@
 #!/bin/bash
 WDIR="/opt/openstack-helm"
 TDIR="tools/deployment/multinode"
-DELAY=10
+DELAY=30
 TASKS=(
     '010-setup-client'
     '020-ingress'
