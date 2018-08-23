@@ -1,13 +1,16 @@
-ARG UBUNTU_VESION=16.04
-FROM ubuntu:${UBUNTU_VESION}
+# ARG before FROM is introduced at Docker 17.0.5
+#ARG UBUNTU_VESION=16.04
+#FROM ubuntu:${UBUNTU_VESION}
+FROM ubuntu:16.04
 
+# Idea from
 # https://github.com/rastasheep/ubuntu-sshd/blob/master/16.04/Dockerfile
 # https://github.com/phusion/baseimage-docker
 
 ARG JUMPSTART_USER=ubuntu
 
 RUN apt-get update\
- && apt-get install -y --no-install-recommends openssh-server sudo python python-apt ca-certificates ntp ntpdate uuid-runtime git make jq nmap curl ipcalc sshpass patch python-cmd2\
+ && apt-get install -y --no-install-recommends openssh-server sudo python python-apt ca-certificates ntp ntpdate uuid-runtime git make jq nmap curl ipcalc sshpass patch python-cmd2 nano\
  && apt-get clean
 
 RUN mkdir /var/run/sshd\
@@ -27,6 +30,7 @@ RUN mkdir -p /etc/openstack-helm\
  && cp /home/${JUMPSTART_USER}/.ssh/id_rsa /etc/openstack-helm/deploy-key.pem\
  && chown $JUMPSTART_USER /etc/openstack-helm/deploy-key.pem\
  && chown -R $JUMPSTART_USER: /opt\
+ && git clone "https://github.com/pgillich/openstack-ccp.git" "/opt/openstack-ccp"\
  && git clone "https://git.openstack.org/openstack/openstack-helm.git" "/opt/openstack-helm"\
  && git clone "https://git.openstack.org/openstack/openstack-helm-infra.git" "/opt/openstack-helm-infra"
 
