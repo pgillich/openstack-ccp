@@ -4,6 +4,8 @@ sudo apt-get install docker.io
 sudo groupadd docker
 sudo usermod -aG docker $USER
 
+sudo apt-get install make
+
 sudo mkdir -p /etc/systemd/system/docker.service.d
 echo "[Service]
 Environment='HTTP_PROXY=${HTTP_PROXY}' 'HTTPS_PROXY=${HTTPS_PROXY}' 'NO_PROXY=${NO_PROXY}'

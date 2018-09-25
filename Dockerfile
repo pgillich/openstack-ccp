@@ -10,7 +10,7 @@ FROM ubuntu:16.04
 ARG JUMPSTART_USER=ubuntu
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends openssh-server sudo python python-apt ca-certificates ntp ntpdate uuid-runtime git make jq nmap curl ipcalc sshpass patch python-cmd2 nano less \
+ && apt-get install -y --no-install-recommends openssh-server sudo python python-apt ca-certificates ntp ntpdate uuid-runtime git make jq nmap curl ipcalc sshpass patch python-cmd2 rsync nano less \
  && apt-get clean
 
 RUN mkdir /var/run/sshd \
